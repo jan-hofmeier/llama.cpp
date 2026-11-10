@@ -1237,9 +1237,9 @@ static __device__ __forceinline__ float vec_dot_iq3_xxs_q8_1(
 
     const block_iq3_xxs * bq3 = (const block_iq3_xxs *) vbq + kbx;
 
-    const int2 q3_packed = make_int2(get_int_b2(bq3->qs, iqs), get_int_b2(bq3->qs, iqs+1));
+    const int2 q3_packed = make_int2(get_int_b1(bq3->qs, iqs), get_int_b1(bq3->qs, iqs+1));
     const uint8_t * q3 = (const uint8_t *) &q3_packed;
-    const uint32_t aux32 = get_int_b2(bq3->qs, QK_K/16 + iqs/2);
+    const uint32_t aux32 = get_int_b1(bq3->qs, QK_K/16 + iqs/2);
 
     int sumi = 0;
 #pragma unroll
@@ -1263,7 +1263,7 @@ static __device__ __forceinline__ float vec_dot_iq3_xxs_q8_1(
 
     const int ls = aux32 >> 28;
     sumi = (ls*sumi + sumi/2)/2;
-    const float d = __half2float(bq3->d) * __low2float(bq8_1[iqs/2].ds);
+    const float d = GGML_E5M3_TO_FP32(bq3->d) * __low2float(bq8_1[iqs/2].ds);
     return d * sumi;
 }
 
@@ -1425,7 +1425,7 @@ static __device__ __forceinline__ float vec_dot_iq4_xs_q8_1(
     int sumi = 0;
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
-        const int aux_q4 = get_int_b4(bq4->qs, iqs + j);
+        const int aux_q4 = get_int_b1(bq4->qs, iqs + j);
         const int2 v = get_int_from_table_16(aux_q4, kvalues_iq4nl);
 
         const int u0 = get_int_b4(bq8_1[iqs/4].qs, j + 0);
@@ -1435,9 +1435,9 @@ static __device__ __forceinline__ float vec_dot_iq4_xs_q8_1(
         sumi = ggml_cuda_dp4a(v.y, u1, sumi);
     }
 
-    const int ls = ((bq4->scales_l[iqs/8] >> (iqs & 0x04)) & 0x0F) | (((bq4->scales_h >> (iqs/2)) & 0x03) << 4);
+    const int ls = ((bq4->scales_l[iqs/8] >> (iqs & 0x04)) & 0x0F) | ((((bq4->scales_h[0] | (bq4->scales_h[1] << 8)) >> (iqs/2)) & 0x03) << 4);
     sumi *= ls - 32;
 
-    const float d = __half2float(bq4->d) * __low2float(bq8_1[iqs/4].ds);
+    const float d = GGML_E5M3_TO_FP32(bq4->d) * __low2float(bq8_1[iqs/4].ds);
     return d * sumi;
 }

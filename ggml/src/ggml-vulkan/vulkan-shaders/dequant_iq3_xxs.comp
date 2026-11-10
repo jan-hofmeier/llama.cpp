@@ -22,7 +22,7 @@ void main() {
     const uint b_idx = 256 * ib + 32 * is;
     const uint s_idx = QUANT_K / 4 + 4 * is;
 
-    const float d = float(data_a[ib].d);
+    const float d = e5m3_to_fp32(uint(data_a[ib].d));
     uint signscale = pack32(u8vec4(
         data_a[ib].qs[s_idx + 0],
         data_a[ib].qs[s_idx + 1],

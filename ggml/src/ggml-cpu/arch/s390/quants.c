@@ -1484,7 +1484,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
         const uint8_t * GGML_RESTRICT q4 = x[ibl].qs;
         const int8_t  * GGML_RESTRICT q8 = y[ibl].qs;
 
-        uint16_t h = x[ibl].scales_h;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
 
         int sumi1 = 0, sumi2 = 0;
         for (int ib = 0; ib < QK_K/64; ++ib) {
@@ -1520,7 +1520,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
             sumi2 += vec_hsum_i32x4(vsumi1) * ls2;
         }
 
-        sumf += GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d * (sumi1 + sumi2);
+        sumf += GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d * (sumi1 + sumi2);
     }
 
     *s = sumf;

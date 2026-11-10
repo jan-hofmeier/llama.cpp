@@ -258,11 +258,11 @@ static void tiled_unpack_src0(const block_iq4_xs * rows, int64_t row_stride, int
             const int q_off = r * qk_stride + slab * TILED_TILE_K;
             const int s_off = r * nb_stride + slab * NB;
             const block_iq4_xs & x = rows[r * row_stride + slab];
-            tile->d[d_off] = ggml_fp16_to_fp32(x.d);
+            tile->d[d_off] = ggml_fp16_to_fp32(GGML_E5M3_TO_FP16(x.d));
 
             // 6-bit scale per 32, stored as (ls - 32); same extraction as dequantize_row_iq4_xs
             for (int s = 0; s < NB; s++) {
-                const int ls = ((x.scales_l[s / 2] >> 4 * (s % 2)) & 0xf) | (((x.scales_h >> 2 * s) & 3) << 4);
+                const int ls = ((x.scales_l[s / 2] >> 4 * (s % 2)) & 0xf) | ((((x.scales_h[0] | (x.scales_h[1] << 8)) >> 2 * s) & 3) << 4);
                 tile->scales[s_off + s] = (int32_t) ls - 32;
             }
 
@@ -392,7 +392,7 @@ static void tiled_unpack_src0(const block_iq3_xxs * rows, int64_t row_stride, in
             const int q_off = r * qk_stride + slab * TILED_TILE_K;
             const int s_off = r * nb_stride + slab * NB;
             const block_iq3_xxs & x = rows[r * row_stride + slab];
-            tile->d[d_off] = ggml_fp16_to_fp32(x.d) * 0.25f;
+            tile->d[d_off] = ggml_fp16_to_fp32(GGML_E5M3_TO_FP16(x.d)) * 0.25f;
 
             const uint8_t * qs = x.qs;
             const uint8_t * scales_and_signs = x.qs + QK_K / 4; // 4 bytes per 32: code bits in the top nibble, signs in 7-bit chunks

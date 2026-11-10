@@ -1928,7 +1928,7 @@ void ggml_vec_dot_iq3_xxs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const 
 
     __m256 accumf = (__m256)__lasx_xvldi(0);
     for (int i = 0; i < nb; ++i) {
-        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        const float d = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)) * y[i].d;
         const uint8_t * GGML_RESTRICT q3 = x[i].qs;
         const uint8_t * GGML_RESTRICT gas = x[i].qs + QK_K/4;
         const int8_t  * GGML_RESTRICT q8 = y[i].qs;
@@ -2243,7 +2243,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
     for (int ibl = 0; ibl < nb; ++ibl) {
         const uint8_t * qs = x[ibl].qs;
         const int8_t  * q8 = y[ibl].qs;
-        uint16_t sh = x[ibl].scales_h;
+        uint16_t sh = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
         __m256i sumi1 = __lasx_xvldi(0);
         __m256i sumi2 = __lasx_xvldi(0);
         for (int ib = 0; ib < QK_K/32; ib += 2) {
@@ -2265,7 +2265,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
             sumi1 = __lasx_xvadd_w(p_1, sumi1);
             sumi2 = __lasx_xvadd_w(p_2, sumi2);
         }
-        accum = __lasx_xvfmadd_s(__lasx_xvreplfr2vr_s(GGML_CPU_FP16_TO_FP32(x[ibl].d)*y[ibl].d),
+        accum = __lasx_xvfmadd_s(__lasx_xvreplfr2vr_s(GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d))*y[ibl].d),
                 __lasx_xvffint_s_w(__lasx_xvadd_w(sumi1, sumi2)), accum);
     }
 
@@ -2279,7 +2279,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
     for (int ibl = 0; ibl < nb; ++ibl) {
         const uint8_t * qs = x[ibl].qs;
         const int8_t  * q8 = y[ibl].qs;
-        uint16_t sh = x[ibl].scales_h;
+        uint16_t sh = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
         __m128i sumi = __lsx_vldi(0);
         for (int ib = 0; ib < QK_K/32; ++ib) {
             const __m128i q4bits = __lsx_vld((const __m128i*)qs, 0); qs += 16;
@@ -2294,7 +2294,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
             sumi = __lsx_vadd_w(lsx_madd_h(p16_0, __lsx_vreplgr2vr_h(ls)), sumi);
             sumi = __lsx_vadd_w(lsx_madd_h(p16_1, __lsx_vreplgr2vr_h(ls)), sumi);
         }
-        const float ds = GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d;
+        const float ds = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d;
         accum = __lsx_vfadd_s(__lsx_vfmul_s(__lsx_vreplfr2vr_s(ds), __lsx_vffint_s_w(sumi)), accum);
     }
 

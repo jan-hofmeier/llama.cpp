@@ -35,7 +35,7 @@ byteswap_tensors: dict[gguf.GGMLQuantizationType, tuple[tuple[int, type[np.unsig
     gguf.GGMLQuantizationType.Q5_K:   ((0,   np.uint16), (2, np.uint16)),                  # d, dmin
     gguf.GGMLQuantizationType.Q6_K:   ((208, np.uint16),),                                 # d
     gguf.GGMLQuantizationType.IQ4_NL: ((0,   np.uint16),),                                 # d
-    gguf.GGMLQuantizationType.IQ4_XS: ((0,   np.uint16), (2, np.uint16)),                  # d, scales_h
+    gguf.GGMLQuantizationType.IQ4_XS: (),                                                  # bytes only
     gguf.GGMLQuantizationType.TQ1_0:  ((52,  np.uint16),),                                 # d
     gguf.GGMLQuantizationType.TQ2_0:  ((64,  np.uint16),),                                 # d
     gguf.GGMLQuantizationType.MXFP4:  (),                                                  # noop

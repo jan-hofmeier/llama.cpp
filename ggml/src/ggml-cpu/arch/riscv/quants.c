@@ -5118,7 +5118,7 @@ static NOINLINE void ggml_vec_dot_iq3_xxs_q8_K_vl128(int n, float * GGML_RESTRIC
     float sumf = 0.0f;
 
     for (int i = 0; i < nb; ++i) {
-        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        const float d = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)) * y[i].d;
 
         const uint8_t * GGML_RESTRICT q3_indices = x[i].qs;
         const uint8_t * GGML_RESTRICT metadata   = x[i].qs + QK_K/4;
@@ -5215,7 +5215,7 @@ static NOINLINE void ggml_vec_dot_iq3_xxs_q8_K_vl256(int n, float * GGML_RESTRIC
     float sumf = 0.0f;
 
     for (int i = 0; i < nb; ++i) {
-        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        const float d = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)) * y[i].d;
 
         const uint8_t * GGML_RESTRICT q3_indices = x[i].qs;
         const uint8_t * GGML_RESTRICT metadata   = x[i].qs + QK_K/4;
@@ -5310,7 +5310,7 @@ static NOINLINE void ggml_vec_dot_iq3_xxs_q8_K_vl512(int n, float * GGML_RESTRIC
     float sumf = 0.0f;
 
     for (int i = 0; i < nb; ++i) {
-        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        const float d = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)) * y[i].d;
 
         const uint8_t * GGML_RESTRICT q3_indices = x[i].qs;
         const uint8_t * GGML_RESTRICT metadata   = x[i].qs + QK_K/4;
@@ -5399,7 +5399,7 @@ static NOINLINE void ggml_vec_dot_iq3_xxs_q8_K_vl1024(int n, float * GGML_RESTRI
     uint32_t aux32[8]; // Buffer for block metadata
 
     for (int i = 0; i < nb; ++i) {
-        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        const float d = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)) * y[i].d;
 
         const uint8_t * GGML_RESTRICT q3_indices = x[i].qs;
         const uint8_t * GGML_RESTRICT metadata   = x[i].qs + QK_K/4;
@@ -5624,7 +5624,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl128(int n, float * GGML_RESTRICT
     for (int ibl = 0; ibl < nb; ++ibl) {
         const int8_t  * q8 = y[ibl].qs;
         const uint8_t * iq4 = x[ibl].qs;
-        uint16_t h = x[ibl].scales_h;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
 
         // We process 2 sub-blocks together.
         int sumi1 = 0, sumi2 = 0;
@@ -5665,7 +5665,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl128(int n, float * GGML_RESTRICT
             __asm__ __volatile__("" ::: "memory");
         }
 
-        sumf += GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d * (sumi1 + sumi2);
+        sumf += GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d * (sumi1 + sumi2);
     }
 
     *s = sumf;
@@ -5699,7 +5699,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl256(int n, float * GGML_RESTRICT
     for (int ibl = 0; ibl < nb; ++ibl) {
         const int8_t  * q8 = y[ibl].qs;
         const uint8_t * iq4 = x[ibl].qs;
-        uint16_t h = x[ibl].scales_h;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
 
         int sumi1 = 0, sumi2 = 0, sumi3 = 0, sumi4 = 0;
 
@@ -5745,7 +5745,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl256(int n, float * GGML_RESTRICT
             __asm__ __volatile__("" ::: "memory");
         }
 
-        sumf += GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d * (sumi1 + sumi2 + sumi3 + sumi4);
+        sumf += GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d * (sumi1 + sumi2 + sumi3 + sumi4);
     }
 
     *s = sumf;
@@ -5783,7 +5783,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl512(int n, float * GGML_RESTRICT
     for (int ibl = 0; ibl < nb; ++ibl) {
         const int8_t  * q8 = y[ibl].qs;
         const uint8_t * iq4 = x[ibl].qs;
-        uint16_t h = x[ibl].scales_h;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
 
         int sumi = 0;
 
@@ -5841,7 +5841,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl512(int n, float * GGML_RESTRICT
             __asm__ __volatile__("" ::: "memory");
         }
 
-        sumf += GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d * (sumi);
+        sumf += GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d * (sumi);
     }
 
     *s = sumf;
@@ -5879,7 +5879,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl1024(int n, float * GGML_RESTRIC
     for (int ibl = 0; ibl < nb; ++ibl) {
         const int8_t  * q8 = y[ibl].qs;
         const uint8_t * iq4 = x[ibl].qs;
-        uint16_t h = x[ibl].scales_h;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
 
         int sumi = 0;
 
@@ -5940,7 +5940,7 @@ static NOINLINE void ggml_vec_dot_iq4_xs_q8_K_vl1024(int n, float * GGML_RESTRIC
             __asm__ __volatile__("" ::: "memory");
         }
 
-        sumf += GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d * (sumi);
+        sumf += GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d * (sumi);
     }
 
     *s = sumf;

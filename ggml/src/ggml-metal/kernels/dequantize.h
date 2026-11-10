@@ -555,13 +555,13 @@ void dequantize_iq2_xs(device const block_iq2_xs * xb, short il, thread type4x4 
 template <typename type4x4>
 void dequantize_iq3_xxs(device const block_iq3_xxs * xb, short il, thread type4x4 & reg) {
     // il is 0...15 for QK_K = 256 => index of block of 32 is il/2
-    const float d = xb->d;
+    const float d = GGML_E5M3_TO_FP32(xb->d);
     const int ib32 = il/2;
     il = il%2;
     // il = 0 or 1. il = 0 processes the first 16 quants in a block of 32, il = 1 the second 16
     device const uint8_t * q3 = xb->qs + 8*ib32;
-    device const uint16_t * gas = (device const uint16_t *)(xb->qs + QK_K/4) + 2*ib32;
-    const uint32_t aux32 = gas[0] | (gas[1] << 16);
+    device const uint8_t * gas = xb->qs + QK_K/4 + 4*ib32;
+    const uint32_t aux32 = gas[0] | (gas[1] << 8) | (gas[2] << 16) | ((uint32_t)gas[3] << 24);
     const float dl = d * (0.5f + (aux32 >> 28)) * 0.5f;
     constant uint8_t * grid1 = (constant uint8_t *)(iq3xxs_grid + q3[4*il+0]);
     constant uint8_t * grid2 = (constant uint8_t *)(iq3xxs_grid + q3[4*il+1]);
@@ -705,13 +705,13 @@ void dequantize_iq4_xs(device const block_iq4_xs * xb, short il, thread type4x4 
     const int ib32 = il/2;
     il = il%2;
     // il = 0 or 1. il = 0 processes the first 16 quants in a block of 32, il = 1 the second 16
-    device const uint32_t * q4 = (device const uint32_t *)xb->qs + 4*ib32;
-    const int ls = ((xb->scales_l[ib32/2] >> 4*(ib32%2)) & 0xf) | (((xb->scales_h >> 2*ib32) & 3) << 4);
-    const float d = (float)xb->d * (ls - 32);
+    device const uint8_t * q4 = xb->qs + 16*ib32;
+    const int ls = ((xb->scales_l[ib32/2] >> 4*(ib32%2)) & 0xf) | ((((xb->scales_h[0] | (xb->scales_h[1] << 8)) >> 2*ib32) & 3) << 4);
+    const float d = GGML_E5M3_TO_FP32(xb->d) * (ls - 32);
     uint32_t aux32;
     thread const uint8_t * q8 = (thread const uint8_t *)&aux32;
     for (int i = 0; i < 4; ++i) {
-        aux32 = (q4[i] >> 4*il) & 0x0f0f0f0f;
+        aux32 = ((q4[4*i+0] | (q4[4*i+1] << 8) | (q4[4*i+2] << 16) | ((uint32_t)q4[4*i+3] << 24)) >> 4*il) & 0x0f0f0f0f;
         reg[i][0] = d * kvalues_iq4nl_f[q8[0]];
         reg[i][1] = d * kvalues_iq4nl_f[q8[1]];
         reg[i][2] = d * kvalues_iq4nl_f[q8[2]];

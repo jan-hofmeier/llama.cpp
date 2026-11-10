@@ -210,14 +210,6 @@ struct iq1_m {
 };
 #endif
 
-#ifdef IQ4_XS_T
-struct iq4_xs {
-    d_scales_h: u32,
-    scales_l: u32,
-    qs: array<u32, 32>
-};
-#endif
-
 #if defined(IQ2_XXS_TABLES) || defined(IQ2_XS_TABLES) || defined(IQ2_S_TABLES) || defined(IQ3_XXS_TABLES) || defined(IQ3_S_TABLES)
 const kmask_iq2xs : array<u32, 2> = array<u32, 2>(
     0x08040201u, // 1, 2, 4, 8

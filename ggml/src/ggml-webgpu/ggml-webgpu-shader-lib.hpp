@@ -1754,6 +1754,7 @@ class ggml_webgpu_shader_lib {
                         case GGML_TYPE_IQ3_S:
                         case GGML_TYPE_IQ1_S:
                         case GGML_TYPE_IQ4_NL:
+                        case GGML_TYPE_IQ4_XS:
                         case GGML_TYPE_MXFP4:
                         case GGML_TYPE_NVFP4:
                             {

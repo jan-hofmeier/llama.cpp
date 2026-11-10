@@ -1681,9 +1681,9 @@ vec_dot_iq3_xxs_q8_1(const void *__restrict__ vbq,
 
     const int ib32 = iqs;
     const uint8_t  * q3 = bq2->qs + 8*ib32;
-    const uint16_t * gas = (const uint16_t *)(bq2->qs + QK_K/4) + 2*ib32;
+    const uint8_t  * gas = bq2->qs + QK_K/4 + 4*ib32;
     const int8_t   * q8 = bq8_1[ib32].qs;
-    uint32_t aux32 = gas[0] | (gas[1] << 16);
+    uint32_t aux32 = gas[0] | (gas[1] << 8) | (gas[2] << 16) | ((uint32_t) gas[3] << 24);
     int sumi = 0;
 #pragma unroll
     for (int l = 0; l < 4; ++l) {
@@ -1699,7 +1699,7 @@ vec_dot_iq3_xxs_q8_1(const void *__restrict__ vbq,
         q8 += 8;
         aux32 >>= 7;
     }
-    const float d = (float)bq2->d * (0.5f + aux32) * bq8_1[ib32].ds[0] * 0.5f;
+    const float d = GGML_E5M3_TO_FP32(bq2->d) * (0.5f + aux32) * bq8_1[ib32].ds[0] * 0.5f;
     return d * sumi;
 #else
     assert(false);
@@ -1741,8 +1741,8 @@ template <> struct reorder_vec_dot_q_sycl<GGML_TYPE_IQ3_XXS> {
             aux32 >>= 7;
         }
 
-        const ggml_half d = *reinterpret_cast<const ggml_half *>(base + d_offset.first);
-        return (float) d * (0.5f + aux32) * q8_1_ds[iqs][0] * 0.5f * sumi;
+        const float d = GGML_E5M3_TO_FP32(base[d_offset.first]);
+        return d * (0.5f + aux32) * q8_1_ds[iqs][0] * 0.5f * sumi;
 #else
         GGML_UNUSED(vbq);
         GGML_UNUSED(ibx_offset);
@@ -1940,13 +1940,13 @@ vec_dot_iq4_xs_q8_1(const void *__restrict__ vbq,
     // iqs is 0...7
     const int ib32 = iqs;
     const int32_t  * q8 = (const int *)bq8_1[ib32].qs;
-    const uint32_t * q4 = (const uint32_t *)bq4->qs + 4*ib32;
-    const int8_t ls = ((bq4->scales_l[ib32/2] >> 4*(ib32%2)) & 0xf) | (((bq4->scales_h >> 2*ib32) & 3) << 4);
-    const float d = (float)bq4->d * (ls - 32) * bq8_1[ib32].ds[0];
+    const uint8_t  * q4 = bq4->qs + 16*ib32;
+    const int8_t ls = ((bq4->scales_l[ib32/2] >> 4*(ib32%2)) & 0xf) | ((((bq4->scales_h[0] | (bq4->scales_h[1] << 8)) >> 2*ib32) & 3) << 4);
+    const float d = GGML_E5M3_TO_FP32(bq4->d) * (ls - 32) * bq8_1[ib32].ds[0];
     int v1, v2;
     int sumi1 = 0, sumi2 = 0;
     for (int j = 0; j < 4; ++j) {
-        get_int_from_table_16(q4[j], values, v1, v2);
+        get_int_from_table_16(q4[4*j] | (q4[4*j+1] << 8) | (q4[4*j+2] << 16) | ((uint32_t) q4[4*j+3] << 24), values, v1, v2);
         sumi1 = dpct::dp4a(v1, q8[j + 0], sumi1);
         sumi2 = dpct::dp4a(v2, q8[j + 4], sumi2);
     }

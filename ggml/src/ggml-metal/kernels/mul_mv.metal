@@ -2212,12 +2212,12 @@ void kernel_mul_mv_iq3_xxs_f32_impl(
 
         device const block_iq3_xxs * xr = x + ibl;
         device const uint8_t  * q3 = xr->qs + 8 * ib;
-        device const uint16_t * gas = (device const uint16_t *)(xr->qs + QK_K/4) + 2 * ib;
-        device const half * dh = &xr->d;
+        device const uint8_t  * gas = xr->qs + QK_K/4 + 4 * ib;
+        device const uint8_t  * dh = &xr->d;
 
         for (short row = row0; row < row1; row++) {
-            const float db = dh[0];
-            const uint32_t aux32 = gas[0] | (gas[1] << 16);
+            const float db = GGML_E5M3_TO_FP32(dh[0]);
+            const uint32_t aux32 = gas[0] | (gas[1] << 8) | (gas[2] << 16) | ((uint32_t)gas[3] << 24);
             const float d = db * (0.5f + (aux32 >> 28));
 
             float2 sum = {0};
@@ -2232,9 +2232,9 @@ void kernel_mul_mv_iq3_xxs_f32_impl(
             }
             sumf[row] += d * (sum[0] + sum[1]);
 
-            dh  += args.nb01/2;
+            dh  += args.nb01;
             q3  += args.nb01;
-            gas += args.nb01/2;
+            gas += args.nb01;
         }
 
         y4 += 32 * ntx;
@@ -2979,7 +2979,8 @@ void kernel_mul_mv_iq4_xs_f32_impl(
 
         for (short row = 0; row < NR0; ++row) {
             device const block_iq4_xs & xb = x[row*ns01 + ibl];
-            device const uint32_t * q4 = (device const uint32_t *)(xb.qs + 16*ib + 8*il);
+            device const uint8_t * q4b = xb.qs + 16*ib + 8*il;
+            const uint32_t q4[2] = { q4b[0] | (q4b[1] << 8) | (q4b[2] << 16) | ((uint32_t)q4b[3] << 24), q4b[4+0] | (q4b[4+1] << 8) | (q4b[4+2] << 16) | ((uint32_t)q4b[4+3] << 24) };
 
             float4 acc1 = {0.f}, acc2 = {0.f};
 
@@ -2999,8 +3000,8 @@ void kernel_mul_mv_iq4_xs_f32_impl(
 
             acc1 += acc2;
 
-            const int ls = (((xb.scales_l[ib/2] >> 4*(ib%2)) & 0xf) | (((xb.scales_h >> 2*ib) & 3) << 4)) - 32;
-            sumf[row] += (float)xb.d * ls * (acc1[0] + acc1[1] + acc1[2] + acc1[3]);
+            const int ls = (((xb.scales_l[ib/2] >> 4*(ib%2)) & 0xf) | ((((xb.scales_h[0] | (xb.scales_h[1] << 8)) >> 2*ib) & 3) << 4)) - 32;
+            sumf[row] += GGML_E5M3_TO_FP32(xb.d) * ls * (acc1[0] + acc1[1] + acc1[2] + acc1[3]);
         }
 
         yb += 2 * QK_K;

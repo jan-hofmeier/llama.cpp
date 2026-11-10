@@ -171,6 +171,37 @@ typedef sycl::half2 ggml_half2;
 
 #endif // GGML_COMMON_DECL_CUDA || GGML_COMMON_DECL_HIP
 
+// E5M3: 8-bit float scale. 5 exponent bits and top 3 mantissa bits of FP16, no sign bit.
+// Convert to FP16/FP32 before any math.
+#define GGML_FP16_BITS_TO_E5M3(x) ((uint8_t)(((x) >> 7) & 0xff))
+#define GGML_E5M3_TO_FP16_BITS(x) ((uint16_t)((uint16_t)(x) << 7))
+#if defined(GGML_COMMON_DECL_C) || defined(GGML_COMMON_DECL_CPP)
+#define GGML_E5M3_TO_FP16(x) ((ggml_half)GGML_E5M3_TO_FP16_BITS(x))
+#elif defined(GGML_COMMON_DECL_METAL)
+#define GGML_E5M3_TO_FP16(x) (as_type<half>((ushort)GGML_E5M3_TO_FP16_BITS(x)))
+#define GGML_E5M3_TO_FP32(x) ((float)GGML_E5M3_TO_FP16(x))
+#else
+#include <cstring>
+#if defined(GGML_COMMON_DECL_SYCL)
+#define GGML_E5M3_FUNC static inline
+#else
+#define GGML_E5M3_FUNC static __host__ __device__ inline
+#endif
+// same result as FP16 -> FP32 of (x << 7)
+GGML_E5M3_FUNC float ggml_e5m3_to_fp32(uint8_t x) {
+    const uint32_t e = x >> 3;
+    const uint32_t m = x & 7;
+    if (e == 0) {
+        return (float)m * (1.0f/131072.0f);
+    }
+    const uint32_t bits = ((e == 31 ? 255 : e + 112) << 23) | (m << 20);
+    float f;
+    memcpy(&f, &bits, sizeof(f));
+    return f;
+}
+#define GGML_E5M3_TO_FP32(x) ggml_e5m3_to_fp32(x)
+#endif
+
 #ifdef _MSC_VER
 #define GGML_EXTENSION
 #else // _MSC_VER
@@ -403,12 +434,12 @@ static_assert(sizeof(block_iq2_s) == sizeof(ggml_half) + QK_K/4 + QK_K/16, "wron
 
 // (Almost) "true" 3-bit quantization.
 // Due to the need to use blocks as per ggml design, it ends up using
-// 3.0625 bpw because of the 16-bit scale for each block of 256.
+// 3.03125 bpw because of the 8-bit scale for each block of 256.
 typedef struct {
-    ggml_half d;
+    uint8_t d; // E5M3
     uint8_t qs[3*QK_K/8];
 } block_iq3_xxs;
-static_assert(sizeof(block_iq3_xxs) == sizeof(ggml_half) + 3*(QK_K/8), "wrong iq3_xxs block size/padding");
+static_assert(sizeof(block_iq3_xxs) == sizeof(uint8_t) + 3*(QK_K/8), "wrong iq3_xxs block size/padding");
 
 // 3.4375 bpw
 #define IQ3S_N_SCALE QK_K/64
@@ -452,12 +483,12 @@ typedef struct {
 static_assert(sizeof(block_iq4_nl) == sizeof(ggml_half) + QK4_NL/2, "wrong iq4_nl block size/padding");
 
 typedef struct {
-    ggml_half d;
-    uint16_t scales_h;
+    uint8_t  d; // E5M3
+    uint8_t  scales_h[2]; // little endian uint16, bytes because the block has no alignment
     uint8_t  scales_l[QK_K/64];
     uint8_t  qs[QK_K/2];
 } block_iq4_xs;
-static_assert(sizeof(block_iq4_xs) == sizeof(ggml_half) + sizeof(uint16_t) + QK_K/64 + QK_K/2, "wrong iq4_xs block size/padding");
+static_assert(sizeof(block_iq4_xs) == sizeof(uint8_t) + sizeof(uint16_t) + QK_K/64 + QK_K/2, "wrong iq4_xs block size/padding");
 
 #endif // GGML_COMMON_DECL
 #endif // GGML_COMMON_DECL

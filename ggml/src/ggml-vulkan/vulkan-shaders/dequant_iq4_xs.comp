@@ -19,10 +19,10 @@ void main() {
 
     const uint ib32 = gl_LocalInvocationID.x % 8;
 
-    const float d = float(data_a[ib].d);
+    const float d = e5m3_to_fp32(uint(data_a[ib].d));
     // Scales are 6 bits
     const uint scale = ((data_a[ib].scales_l[ib32/2] >> (4 * (ib32 & 1))) & 0xF)
-                     | (((data_a[ib].scales_h >> (2 * ib32)) & 3) << 4);
+                     | (((IQ4_XS_SCALES_H(data_a[ib]) >> (2 * ib32)) & 3) << 4);
     const float dl = d * (int(scale) - 32);
 
     const uint b_idx = 256 * ib + 32 * ib32;

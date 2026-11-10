@@ -237,7 +237,7 @@ int get_tile_size() {
         tile_size += TILE_N * 4;
     }
     if (std::is_same<TB, block_iq4_xs>::value) {
-        tile_size += TILE_N * 2;
+        tile_size += TILE_N * 3;
     }
     return tile_size;
 }
@@ -254,7 +254,7 @@ int get_row_size(int K) {
         row_size += KB * 4;
     }
     if (std::is_same<TB, block_iq4_xs>::value) {
-        row_size += KB * 2;
+        row_size += KB * 3;
     }
     return row_size;
 }
@@ -897,7 +897,7 @@ void pack_B(void * RESTRICT packed_B, const block_iq4_xs * RESTRICT B, int KB) {
 
     // pack the scales
     for (int n = 0; n < TILE_N; ++n) {
-        uint16_t sh = B[n * KB].scales_h;
+        uint16_t sh = B[n * KB].scales_h[0] | (B[n * KB].scales_h[1] << 8);
         for (int k = 0; k < 8; k += 2) {
             const int16_t ls1 = ((B[n * KB].scales_l[k / 2] & 0xf) | ((sh << 4) & 0x30)) - 32;
             const int16_t ls2 = ((B[n * KB].scales_l[k / 2] >>  4) | ((sh << 2) & 0x30)) - 32;
@@ -905,7 +905,7 @@ void pack_B(void * RESTRICT packed_B, const block_iq4_xs * RESTRICT B, int KB) {
             scales[(k + 1) * TILE_N + n] = ls2;
             sh >>= 4;
         }
-        d[n] = B[n * KB].d;
+        d[n] = GGML_E5M3_TO_FP16(B[n * KB].d);
     }
 }
 
@@ -1891,7 +1891,7 @@ struct tinygemm_kernel_vnni<block_q8_K, block_iq4_xs, float, BLOCK_M, BLOCK_N, B
     static void apply(int KB, const void * RESTRICT _A, const void * RESTRICT _B, float * RESTRICT C, int ldc) {
 
         constexpr int COLS = BLOCK_N / 16;
-        const int TILE_SIZE = TILE_N * sizeof(block_iq4_xs) + TILE_N * 2;
+        const int TILE_SIZE = TILE_N * sizeof(block_iq4_xs) + TILE_N * 3;
 
         const block_q8_K * RESTRICT A = static_cast<const block_q8_K *>(_A);
         const char * RESTRICT B = static_cast<const char *>(_B);

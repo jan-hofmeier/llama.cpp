@@ -7,7 +7,7 @@
 #define QK_K 256
 
 struct block_iq3_xxs {
-    half d;
+    uchar d; // E5M3
     uchar qs[3*QK_K/8];
 };
 

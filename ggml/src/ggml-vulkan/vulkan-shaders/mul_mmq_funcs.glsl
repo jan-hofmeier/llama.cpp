@@ -281,16 +281,16 @@ void block_a_to_shmem(const uint buf_ib, const uint ib, const uint iqs, const bo
     if (is_in_bounds) {
         const uint ib_k = ib / 8;
         const uint ib32 = ib % 8;
-        const uint32_t vui = data_a_packed32[ib_k].qs[4 * ib32 + iqs];
+        const uint32_t vui = QS_U32(data_a[ib_k], 4 * (4 * ib32 + iqs));
         const i32vec2 qs = iq4nl_to_i8x8(vui);
 
         buf_a[buf_ib].qs[iqs    ] = qs.x;
         buf_a[buf_ib].qs[iqs + 4] = qs.y;
 
         if (iqs == 0) {
-            const uint sl = (data_a_packed32[ib_k].scales_l >> (4 * ib32)) & 0xF;
-            const uint sh = (data_a_packed32[ib_k].scales_h >> (2 * ib32)) & 3;
-            buf_a[buf_ib].d = FLOAT_TYPE(float(data_a[ib_k].d) * float(int(sl | (sh << 4)) - 32));
+            const uint sl = (uint(data_a[ib_k].scales_l[ib32 / 2]) >> (4 * (ib32 & 1))) & 0xF;
+            const uint sh = (IQ4_XS_SCALES_H(data_a[ib_k]) >> (2 * ib32)) & 3;
+            buf_a[buf_ib].d = FLOAT_TYPE(e5m3_to_fp32(uint(data_a[ib_k].d)) * float(int(sl | (sh << 4)) - 32));
         }
     } else {
         buf_a[buf_ib].qs[iqs] = 0;

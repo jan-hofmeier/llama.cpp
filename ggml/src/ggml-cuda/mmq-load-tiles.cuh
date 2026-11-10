@@ -1368,9 +1368,9 @@ template <ggml_type type, int J, bool fallback> static __device__ __forceinline_
 
         const block_iq3_xxs * bxi = (const block_iq3_xxs *) x + kbx0 + i*stride;
 
-        const int2 q3_packed = make_int2(get_int_b2(bxi->qs, 2*kqsx+0), get_int_b2(bxi->qs, 2*kqsx+1));
+        const int2 q3_packed = make_int2(get_int_b1(bxi->qs, 2*kqsx+0), get_int_b1(bxi->qs, 2*kqsx+1));
         const uint8_t * q3 = (const uint8_t *) &q3_packed;
-        const uint32_t aux32 = get_int_b2(bxi->qs, QK_K/16 + kqsx);
+        const uint32_t aux32 = get_int_b1(bxi->qs, QK_K/16 + kqsx);
 
 #pragma unroll
         for (int l = 0; l < QR3_XXS; ++l) {
@@ -1393,7 +1393,7 @@ template <ggml_type type, int J, bool fallback> static __device__ __forceinline_
         }
 
         const int ls = aux32 >> 28;
-        const float d = bxi->d;
+        const float d = GGML_E5M3_TO_FP32(bxi->d);
 #if defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
         x_df[i*sram_stride             + kqsx] = (ls*d + d/2)/2;
 #else
@@ -1503,7 +1503,7 @@ template <ggml_type type, int J, bool fallback, bool has_fusion> static __device
 
         const block_iq4_xs * bxi = ggml_cuda_mmq_x_row<block_iq4_xs, has_fusion>(x, x_gate, kbx0, i, stride);
 
-        const int aux_q4 = get_int_b4(bxi->qs, kqsx);
+        const int aux_q4 = get_int_b1(bxi->qs, kqsx);
         const int2 v = get_int_from_table_16(aux_q4, kvalues_iq4nl);
         const int k0 = 8 * (kqsx / 4) + kqsx % 4;
 
@@ -1527,10 +1527,10 @@ template <ggml_type type, int J, bool fallback, bool has_fusion> static __device
 
         const block_iq4_xs * bxi = ggml_cuda_mmq_x_row<block_iq4_xs, has_fusion>(x, x_gate, kbx0, i, stride);
 
-        const float d = __half2float(bxi->d);
+        const float d = GGML_E5M3_TO_FP32(bxi->d);
 
         const int ls = ((bxi->scales_l[(threadIdx.x % 8)/2] >> (4*(threadIdx.x % 2))) & 0x0F)
-            | (((bxi->scales_h >> (2*(threadIdx.x % 8))) & 0x03) << 4);
+            | ((((bxi->scales_h[0] | (bxi->scales_h[1] << 8)) >> (2*(threadIdx.x % 8))) & 0x03) << 4);
 
 #if defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
         x_df[i*sram_stride             + threadIdx.x % 8] = d * (ls - 32);

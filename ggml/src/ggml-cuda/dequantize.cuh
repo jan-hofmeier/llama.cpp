@@ -331,11 +331,11 @@ static __device__ __forceinline__ void dequantize_iq3_xxs(const void * vx, const
     const int64_t ib = tid%8; // 0...7
     dst_t * y = yy + 32*ib + 8*il;
     const uint8_t  * q3 = x[ibs].qs + 8*ib;
-    const uint16_t * gas = (const uint16_t *)(x[ibs].qs + QK_K/4) + 2*ib;
+    const uint8_t  * gas = x[ibs].qs + QK_K/4 + 4*ib;
     const uint8_t  * grid1 = (const uint8_t *)(iq3xxs_grid + q3[2*il+0]);
     const uint8_t  * grid2 = (const uint8_t *)(iq3xxs_grid + q3[2*il+1]);
-    const uint32_t aux32 = gas[0] | (gas[1] << 16);
-    const float d = (float)x[ibs].d * (0.5f + (aux32 >> 28)) * 0.5f;
+    const uint32_t aux32 = gas[0] | (gas[1] << 8) | (gas[2] << 16) | ((uint32_t)gas[3] << 24);
+    const float d = GGML_E5M3_TO_FP32(x[ibs].d) * (0.5f + (aux32 >> 28)) * 0.5f;
     const uint8_t signs = ksigns_iq2xs[(aux32 >> 7*il) & 127];
     for (int j = 0; j < 4; ++j) {
         y[j+0] = ggml_cuda_cast<dst_t>(d * grid1[j] * (signs & kmask_iq2xs[j+0] ? -1.f : 1.f));
@@ -428,7 +428,7 @@ static __device__ __forceinline__ void dequantize_iq4_xs(const void * vx, const 
     const int64_t ib = tid%8; // 0...7
     dst_t * y = yy + 32*ib + 4*il;
     const uint8_t  * q4 = x[ibs].qs + 16*ib + 4*il;
-    const float d = (float)x[ibs].d * ((((x[ibs].scales_l[ib/2] >> 4*(ib%2)) & 0xf) | (((x[ibs].scales_h >> 2*ib) & 3) << 4)) - 32);
+    const float d = GGML_E5M3_TO_FP32(x[ibs].d) * ((((x[ibs].scales_l[ib/2] >> 4*(ib%2)) & 0xf) | ((((x[ibs].scales_h[0] | (x[ibs].scales_h[1] << 8)) >> 2*ib) & 3) << 4)) - 32);
     for (int j = 0; j < 4; ++j) {
         y[j+ 0] = ggml_cuda_cast<dst_t>(d * kvalues_iq4nl[q4[j] & 0xf]);
         y[j+16] = ggml_cuda_cast<dst_t>(d * kvalues_iq4nl[q4[j] >>  4]);

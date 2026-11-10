@@ -13464,7 +13464,8 @@ static void ggml_backend_opencl_buffer_set_tensor(ggml_backend_buffer_t buffer, 
         const size_t size_qs = n_blk * 64;
         const size_t size_sas = n_blk * 32;
         const size_t size_d = n_blk * 2;
-        GGML_ASSERT(size_qs + size_sas + size_d == ggml_nbytes(tensor) && "Incorrect tensor size");
+        // the flat layout has an FP16 d, the block has a 1 byte E5M3 d
+        GGML_ASSERT(size_qs + size_sas + size_d == ggml_nbytes(tensor) + n_blk && "Incorrect tensor size");
 
         cl_int err;
         cl_mem data_device = clCreateBuffer(context, CL_MEM_READ_WRITE,
@@ -14971,7 +14972,8 @@ static void ggml_backend_opencl_buffer_set_tensor(ggml_backend_buffer_t buffer, 
         const size_t size_sl = n_blk * 4;
         const size_t size_sh = n_blk * 2;
         const size_t size_d = n_blk * 2;
-        GGML_ASSERT(size_qs + size_sl + size_sh + size_d == ggml_nbytes(tensor) && "Incorrect tensor size");
+        // the flat layout has an FP16 d, the block has a 1 byte E5M3 d
+        GGML_ASSERT(size_qs + size_sl + size_sh + size_d == ggml_nbytes(tensor) + n_blk && "Incorrect tensor size");
 
         cl_int err;
         cl_mem data_device = clCreateBuffer(context, CL_MEM_READ_WRITE,
@@ -17626,6 +17628,10 @@ static size_t ggml_backend_opencl_buffer_type_get_alloc_size(ggml_backend_buffer
     if (ggml_is_quantized(tensor->type)) {
         ggml_backend_opencl_device_context * dev_ctx = (ggml_backend_opencl_device_context *) buft->device->context;
         size += 4 * dev_ctx->backend_ctx->alignment;
+    }
+    // the flat layout stores the E5M3 block scale as FP16: 1 more byte per block
+    if (tensor->type == GGML_TYPE_IQ3_XXS || tensor->type == GGML_TYPE_IQ4_XS) {
+        size += ggml_nelements(tensor) / ggml_blck_size(tensor->type);
     }
 #endif // GGML_OPENCL_SOA_Q
     return size;

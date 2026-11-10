@@ -1789,7 +1789,7 @@ void ggml_vec_dot_iq3_xxs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const 
     vector float vsumf3 = vec_splats(0.0f);
 
     for (int i = 0; i < nb; ++i) {
-        vector float vxd = vec_splats(GGML_CPU_FP16_TO_FP32(x[i].d));
+        vector float vxd = vec_splats(GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)));
         vector float vyd = vec_splats(y[i].d);
         vector float vd = vec_mul(vxd, vyd);
 
@@ -2221,7 +2221,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
 
     for (int ibl = 0; ibl < nb; ++ibl) {
 
-        vector float vxd = vec_splats(GGML_CPU_FP16_TO_FP32(x[ibl].d));
+        vector float vxd = vec_splats(GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)));
         vector float vyd = vec_splats(y[ibl].d);
         vector float vd = vec_mul(vxd, vyd);
 
@@ -2230,7 +2230,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
         vector signed int vsumi2 = v0;
         vector signed int vsumi3 = v0;
 
-        uint16_t h = x[ibl].scales_h;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
 
         const uint8_t * GGML_RESTRICT q4 = x[ibl].qs;
         const uint8_t * GGML_RESTRICT sc = x[ibl].scales_l;

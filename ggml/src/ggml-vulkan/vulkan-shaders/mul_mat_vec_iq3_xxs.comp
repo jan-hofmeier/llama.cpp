@@ -13,10 +13,8 @@ void calc_superblock(const uint a_offset, const uint b_offset, const uint itid, 
 
     uint ibi = a_offset + first_row * num_blocks_per_row + i;
     [[unroll]] for (uint n = 0; n < num_rows; ++n) {
-        const float d = float(data_a[ibi].d);
-        const uint signscale = pack32(u16vec2(
-            data_a_packed16[ibi].qs[QUANT_K / 8 + 2 * ib32],
-            data_a_packed16[ibi].qs[QUANT_K / 8 + 2 * ib32 + 1]));
+        const float d = e5m3_to_fp32(uint(data_a[ibi].d));
+        const uint signscale = QS_U32(data_a[ibi], QUANT_K / 4 + 4 * ib32);
         const float db = d * 0.5 * (0.5 + (signscale >> 28));
         [[unroll]] for (uint l = 0; l < 2; ++l) {
             const uint qs0 = data_a[ibi].qs[8 * ib32 + 4 * (itid & 1) + 2 * l];

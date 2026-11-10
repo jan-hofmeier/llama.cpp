@@ -16,9 +16,16 @@
 
 // d, then 64 grid index bytes, then 8 uint32 of packed scale+signs
 typedef struct {
-    half  d;
+    uchar d; // E5M3
     uchar qs[3*QK_K/8];
 } block_iq3_xxs;
+
+// E5M3 scale: 5 exponent bits and top 3 mantissa bits of FP16, no sign. Same result as FP16 -> FP32 of (x << 7).
+static inline float e5m3_to_fp32(uchar x) {
+    const uint e = x >> 3;
+    const uint m = x & 7;
+    return e == 0 ? (float)m * (1.0f/131072.0f) : as_float(((e + 112) << 23) | (m << 20));
+}
 
 #undef N_DST
 #undef N_SIMDGROUP
@@ -106,11 +113,11 @@ kernel void kernel_mul_mv_iq3_xxs_f32(
 
             global uchar * qs = xb->qs + 8*it;
 
-            // Blocks are 98 bytes, so packed signs are only 2-byte aligned.
-            global ushort * sw = (global ushort *)(xb->qs + 64 + 4*it);
-            uint aux32 = (uint)sw[0] | ((uint)sw[1] << 16);
+            // Blocks are 97 bytes, so packed signs have no alignment.
+            global uchar * sw = xb->qs + 64 + 4*it;
+            uint aux32 = (uint)sw[0] | ((uint)sw[1] << 8) | ((uint)sw[2] << 16) | ((uint)sw[3] << 24);
 
-            float db = (float)xb->d * (0.5f + (float)(aux32 >> 28)) * 0.5f;
+            float db = e5m3_to_fp32(xb->d) * (0.5f + (float)(aux32 >> 28)) * 0.5f;
 
             float acc = 0.f;
             for (int l = 0; l < 4; ++l) {

@@ -7,8 +7,8 @@
 #define QK_K 256
 
 struct block_iq4_xs {
-    half d;
-    ushort scales_h;
+    uchar d; // E5M3
+    uchar scales_h[2];
     uchar scales_l[QK_K/64];
     uchar qs[QK_K/2];
 };

@@ -1100,10 +1100,11 @@ class IQ3_XXS(__Quant, qtype=GGMLQuantizationType.IQ3_XXS):
     def dequantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
         n_blocks = blocks.shape[0]
 
-        d, rest = np.hsplit(blocks, [2])
+        d, rest = np.hsplit(blocks, [1])
         qs, scales = np.hsplit(rest, [QK_K // 4])
 
-        d = d.view(np.float16).astype(np.float32)
+        # E5M3 scale: FP16 bits are (d << 7)
+        d = (d.astype(np.uint16) << np.uint16(7)).view(np.float16).astype(np.float32)
         scales = scales.view(np.uint32)
 
         db = d * (np.float32(0.5) + (scales >> 28).astype(np.float32)) * np.float32(0.5)
@@ -1425,11 +1426,12 @@ class IQ4_XS(__Quant, qtype=GGMLQuantizationType.IQ4_XS):
     def dequantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
         n_blocks = blocks.shape[0]
 
-        d, rest = np.hsplit(blocks, [2])
+        d, rest = np.hsplit(blocks, [1])
         scales_h, rest = np.hsplit(rest, [2])
         scales_l, qs = np.hsplit(rest, [QK_K // 64])
 
-        d = d.view(np.float16).astype(np.float32)
+        # E5M3 scale: FP16 bits are (d << 7)
+        d = (d.astype(np.uint16) << np.uint16(7)).view(np.float16).astype(np.float32)
         scales_h = scales_h.view(np.uint16)
 
         scales_l = scales_l.reshape((n_blocks, -1, 1)) >> np.array([0, 4], dtype=np.uint8).reshape((1, 1, 2))

@@ -489,17 +489,17 @@ fn copy_elements(src_base: u32, dst_base: u32, offset: u32) {
 
 #ifdef IQ3_XXS
 fn copy_elements(src_base: u32, dst_base: u32, offset: u32) {
-    let block_byte_base = (src_base + offset) * 98; // Block stride: 98 bytes
-    let d = load_f16_as_f32_at_src(block_byte_base);
+    let block_byte_base = (src_base + offset) * 97; // Block stride: 97 bytes
+    let d = unpack2x16float((load_u32_at_src(block_byte_base) & 0xFF) << 7)[0]; // E5M3 -> FP16 bits
     var dst_i = dst_base + offset * 256;
     for (var ib: u32 = 0; ib < 16; ib += 2) {
-        let sc_sign_offset = block_byte_base + 2 + (ib + 32) * 2;
+        let sc_sign_offset = block_byte_base + 1 + (ib + 32) * 2;
         let sc_sign = load_u32_at_src(sc_sign_offset);
         let db = d * (0.5 + f32(sc_sign >> 28)) * 0.5;
         for (var l: u32 = 0; l < 4; l++) {
             let is = (sc_sign >> (7 * l)) & 127;
             let signs = get_byte(ksigns_iq2xs[is / 4], is % 4);
-            let ig_val = load_u32_at_src(block_byte_base + 2 + (ib * 2 + l) * 2) & 0xFFFF;
+            let ig_val = load_u32_at_src(block_byte_base + 1 + (ib * 2 + l) * 2) & 0xFFFF;
             let ig1 = get_byte(ig_val, 0);
             let ig2 = get_byte(ig_val, 1);
             for (var j: u32 = 0; j < 4; j++) {
@@ -653,16 +653,18 @@ fn copy_elements(src_base: u32, dst_base: u32, offset: u32) {
 
 #ifdef IQ4_XS
 fn copy_elements(src_base: u32, dst_base: u32, offset: u32) {
-    let block = src[src_base + offset];
-    let d = unpack2x16float(block.d_scales_h)[0];
-    let scales_h = block.d_scales_h >> 16;
+    let block_byte_base = (src_base + offset) * 135; // Block stride: 135 bytes
+    let d_scales_h = load_u32_at_src(block_byte_base);
+    let d = unpack2x16float((d_scales_h & 0xFF) << 7)[0]; // E5M3 -> FP16 bits
+    let scales_h = (d_scales_h >> 8) & 0xFFFF;
+    let scales_l = load_u32_at_src(block_byte_base + 3);
     var dst_i = dst_base + offset * 256;
     for (var ib: u32 = 0; ib < 8; ib++) {
-        let ls = ((get_byte(block.scales_l, ib / 2) >> (4 * (ib % 2))) & 0xF) | (((scales_h >> (2 * ib)) & 3) << 4);
+        let ls = ((get_byte(scales_l, ib / 2) >> (4 * (ib % 2))) & 0xF) | (((scales_h >> (2 * ib)) & 3) << 4);
         let dl = d * (f32(ls) - 32.0);
         for (var j: u32 = 0; j < 16; j++) {
             let iqs = ib * 16 + j;
-            let qsb = get_byte(block.qs[iqs / 4], iqs % 4);
+            let qsb = load_u32_at_src(block_byte_base + 7 + iqs) & 0xFF;
             dst[dst_i] = dl * f32(kvalues_iq4nl[qsb & 0xF]);
             dst[dst_i + 16] = dl * f32(kvalues_iq4nl[qsb >> 4]);
             dst_i++;

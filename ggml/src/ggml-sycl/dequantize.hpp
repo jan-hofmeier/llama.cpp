@@ -544,11 +544,11 @@ static __dpct_inline__ void dequantize_iq3_xxs(const void *vx, const int64_t ib,
         const int j = r % 8;
 
         const uint8_t * q3 = x[ib].qs + 8 * ib8;
-        const uint16_t * gas = (const uint16_t *) (x[ib].qs + QK_K / 4) + 2 * ib8;
+        const uint8_t * gas = x[ib].qs + QK_K / 4 + 4 * ib8;
         const uint8_t * grid1 = (const uint8_t *) (iq3xxs_grid + q3[2 * il + 0]);
         const uint8_t * grid2 = (const uint8_t *) (iq3xxs_grid + q3[2 * il + 1]);
-        const uint32_t aux32 = gas[0] | (gas[1] << 16);
-        const float d = (float) x[ib].d * (0.5f + (aux32 >> 28)) * 0.5f;
+        const uint32_t aux32 = gas[0] | (gas[1] << 8) | (gas[2] << 16) | ((uint32_t) gas[3] << 24);
+        const float d = GGML_E5M3_TO_FP32(x[ib].d) * (0.5f + (aux32 >> 28)) * 0.5f;
         const uint8_t signs = ksigns_iq2xs[(aux32 >> (7 * il)) & 127];
 
         if (j < 4) {
@@ -686,8 +686,8 @@ static __dpct_inline__ void dequantize_iq4_xs(const void *vx, const int64_t ib,
         const uint8_t q = x[ib].qs[16 * ib8 + byte_idx];
         const uint8_t qv = (r < 16) ? (q & 0x0F) : (q >> 4);
 
-        const float d = (float) x[ib].d * ((((x[ib].scales_l[ib8 / 2] >> (4 * (ib8 % 2))) & 0xf) |
-                        (((x[ib].scales_h >> (2 * ib8)) & 3) << 4)) - 32);
+        const float d = GGML_E5M3_TO_FP32(x[ib].d) * ((((x[ib].scales_l[ib8 / 2] >> (4 * (ib8 % 2))) & 0xf) |
+                        ((((x[ib].scales_h[0] | (x[ib].scales_h[1] << 8)) >> (2 * ib8)) & 3) << 4)) - 32);
         return d * kvalues_iq4nl[qv];
     };
 
@@ -1518,11 +1518,11 @@ static void dequantize_block_iq3_xxs(const void * __restrict__ vx, dst_t * __res
     const int64_t ib = tid%8; // 0...7
     dst_t * y = yy + i*QK_K + 32*ib + 8*il;
     const uint8_t  * q3 = x[i].qs + 8*ib;
-    const uint16_t * gas = (const uint16_t *)(x[i].qs + QK_K/4) + 2*ib;
+    const uint8_t  * gas = x[i].qs + QK_K/4 + 4*ib;
     const uint8_t  * grid1 = (const uint8_t *)(iq3xxs_grid + q3[2*il+0]);
     const uint8_t  * grid2 = (const uint8_t *)(iq3xxs_grid + q3[2*il+1]);
-    const uint32_t aux32 = gas[0] | (gas[1] << 16);
-    const float d = (float)x[i].d * (0.5f + (aux32 >> 28)) * 0.5f;
+    const uint32_t aux32 = gas[0] | (gas[1] << 8) | (gas[2] << 16) | ((uint32_t) gas[3] << 24);
+    const float d = GGML_E5M3_TO_FP32(x[i].d) * (0.5f + (aux32 >> 28)) * 0.5f;
     const uint8_t signs = ksigns_iq2xs[(aux32 >> 7*il) & 127];
     for (int j = 0; j < 4; ++j) {
         y[j+0] = d * grid1[j] * (signs & kmask_iq2xs[j+0] ? -1.f : 1.f);
@@ -1546,13 +1546,13 @@ static void dequantize_block_iq3_xxs_reorder(const void * __restrict__ vx, dst_t
     const int64_t ib = tid % 8;
     const uint8_t * base = static_cast<const uint8_t *>(vx);
     const uint8_t * qs = base + i * (3 * QK_K / 8);
-    const ggml_half * d = reinterpret_cast<const ggml_half *>(base + nb * (3 * QK_K / 8));
+    const uint8_t * d = base + nb * (3 * QK_K / 8);
     const uint8_t * q3 = qs + 8 * ib;
     const uint16_t * gas = reinterpret_cast<const uint16_t *>(qs + QK_K / 4) + 2 * ib;
     const uint8_t * grid1 = reinterpret_cast<const uint8_t *>(iq3xxs_grid + q3[2*il+0]);
     const uint8_t * grid2 = reinterpret_cast<const uint8_t *>(iq3xxs_grid + q3[2*il+1]);
     const uint32_t aux32 = gas[0] | (gas[1] << 16);
-    const float dl = (float) d[i] * (0.5f + (aux32 >> 28)) * 0.5f;
+    const float dl = GGML_E5M3_TO_FP32(d[i]) * (0.5f + (aux32 >> 28)) * 0.5f;
     const uint8_t signs = ksigns_iq2xs[(aux32 >> (7 * il)) & 127];
     dst_t * y = yy + 32 * ib + 8 * il;
     sycl::vec<dst_t, 4> lo, hi;
@@ -1750,7 +1750,7 @@ dequantize_block_iq4_xs(const void *__restrict__ vx, dst_t *__restrict__ yy,
     const int64_t ib = tid%8; // 0...7
     dst_t * y = yy + i*QK_K + 32*ib + 4*il;
     const uint8_t  * q4 = x[i].qs + 16*ib + 4*il;
-    const float d = (float)x[i].d * ((((x[i].scales_l[ib/2] >> 4*(ib%2)) & 0xf) | (((x[i].scales_h >> 2*ib) & 3) << 4)) - 32);
+    const float d = GGML_E5M3_TO_FP32(x[i].d) * ((((x[i].scales_l[ib/2] >> 4*(ib%2)) & 0xf) | ((((x[i].scales_h[0] | (x[i].scales_h[1] << 8)) >> 2*ib) & 3) << 4)) - 32);
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
         y[j+ 0] = d * kvalues_iq4nl[q4[j] & 0xf];

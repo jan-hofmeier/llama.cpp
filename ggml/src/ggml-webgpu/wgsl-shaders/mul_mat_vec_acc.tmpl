@@ -1271,7 +1271,7 @@ fn accumulate_vec_dot(thread_id: u32, row_base: u32, src0_batch_offset: u32, src
 
 #ifdef MUL_ACC_IQ3_XXS
 #define BLOCK_SIZE 256
-#define BLOCK_SIZE_BYTES 98
+#define BLOCK_SIZE_BYTES 97
 #define THREADS_PER_BLOCK 16
 fn accumulate_vec_dot(thread_id: u32, row_base: u32, src0_batch_offset: u32, src1_idx_base: u32) -> array<array<f32, OUTPUTS_PER_WG>, NUM_COLS> {
     var acc: array<array<f32, OUTPUTS_PER_WG>, NUM_COLS>;
@@ -1299,10 +1299,10 @@ fn accumulate_vec_dot(thread_id: u32, row_base: u32, src0_batch_offset: u32, src
             let output_row = row_base + row;
             if (output_row < params.m) {
                 let block_byte_base = (src0_batch_offset + output_row * params.stride_01 + block) * BLOCK_SIZE_BYTES;
-                let d = f32(load_f16_at_src0(block_byte_base));
-                let qs_lo = load_u32_at_src0(block_byte_base + 2u + sub_blk * 8u);
-                let qs_hi = load_u32_at_src0(block_byte_base + 2u + sub_blk * 8u + 4u);
-                let aux = load_u32_at_src0(block_byte_base + 66u + sub_blk * 4u);
+                let d = unpack2x16float((load_u32_at_src0(block_byte_base) & 0xFFu) << 7u)[0]; // E5M3 -> FP16 bits
+                let qs_lo = load_u32_at_src0(block_byte_base + 1u + sub_blk * 8u);
+                let qs_hi = load_u32_at_src0(block_byte_base + 1u + sub_blk * 8u + 4u);
+                let aux = load_u32_at_src0(block_byte_base + 65u + sub_blk * 4u);
                 let ls = aux >> 28u;
                 let db = d * (0.5 + f32(ls)) * 0.5;
 
@@ -1456,7 +1456,7 @@ fn accumulate_vec_dot(thread_id: u32, row_base: u32, src0_batch_offset: u32, src
 
 #ifdef MUL_ACC_IQ4_XS
 #define BLOCK_SIZE 256
-#define BLOCK_SIZE_BYTES 136
+#define BLOCK_SIZE_BYTES 135
 #define THREADS_PER_BLOCK 16
 fn accumulate_vec_dot(thread_id: u32, row_base: u32, src0_batch_offset: u32, src1_idx_base: u32) -> array<array<f32, OUTPUTS_PER_WG>, NUM_COLS> {
     var acc: array<array<f32, OUTPUTS_PER_WG>, NUM_COLS>;
@@ -1483,16 +1483,17 @@ fn accumulate_vec_dot(thread_id: u32, row_base: u32, src0_batch_offset: u32, src
             let output_row = row_base + row;
             if (output_row < params.m) {
                 let block_byte_base = (src0_batch_offset + output_row * params.stride_01 + block) * BLOCK_SIZE_BYTES;
-                let d = f32(load_f16_at_src0(block_byte_base));
-                let scales_h = load_u16_at_src0(block_byte_base + 2u);
-                let scales_l_word = load_u32_at_src0(block_byte_base + 4u);
+                let d_scales_h = load_u32_at_src0(block_byte_base);
+                let d = unpack2x16float((d_scales_h & 0xFFu) << 7u)[0]; // E5M3 -> FP16 bits
+                let scales_h = (d_scales_h >> 8u) & 0xFFFFu;
+                let scales_l_word = load_u32_at_src0(block_byte_base + 3u);
                 let sl_byte = get_byte(scales_l_word, sub_blk / 2u);
                 let sl = (sl_byte >> (4u * (sub_blk % 2u))) & 0xFu;
                 let sh_bits = (scales_h >> (2u * sub_blk)) & 3u;
                 let ls = i32(sl | (sh_bits << 4u));
                 let dl = d * f32(ls - 32);
 
-                let qs_byte_off = 8u + sub_blk * 16u;
+                let qs_byte_off = 7u + sub_blk * 16u;
                 let q_w0 = load_u32_at_src0(block_byte_base + qs_byte_off);
                 let q_w1 = load_u32_at_src0(block_byte_base + qs_byte_off + 4u);
                 let q_w2 = load_u32_at_src0(block_byte_base + qs_byte_off + 8u);

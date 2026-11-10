@@ -1572,6 +1572,16 @@ void init_iq_shmem(uvec3 wgsize)
 #endif
 #endif
 
+// E5M3 scale: 5 exponent bits and top 3 mantissa bits of FP16, no sign. Same result as FP16 -> FP32 of (x << 7).
+float e5m3_to_fp32(uint x) {
+    const uint e = x >> 3;
+    const uint m = x & 7;
+    return e == 0 ? float(m) * (1.0 / 131072.0) : uintBitsToFloat(((e + 112) << 23) | (m << 20));
+}
+// little endian uint32 at byte i of qs, for blocks that have no alignment
+#define QS_U32(blk, i) pack32(u8vec4(blk.qs[(i)], blk.qs[(i) + 1], blk.qs[(i) + 2], blk.qs[(i) + 3]))
+#define IQ4_XS_SCALES_H(blk) (uint(blk.scales_h[0]) | (uint(blk.scales_h[1]) << 8))
+
 #if defined(DATA_A_IQ3_XXS) || defined(DATA_A_IQ3_S)
 #if defined(DATA_A_IQ3_S)
 shared uint32_t iq3s_grid[512];
@@ -1585,14 +1595,8 @@ shared uint32_t iq3xxs_grid[256];
 
 struct block_iq3_xxs
 {
-    float16_t d;
+    uint8_t d; // E5M3
     uint8_t qs[QUANT_K_IQ3_XXS/4 + QUANT_K_IQ3_XXS/8];
-};
-
-struct block_iq3_xxs_packed16
-{
-    float16_t d;
-    uint16_t qs[QUANT_K_IQ3_XXS/8 + QUANT_K_IQ3_XXS/16];
 };
 
 #if defined(DATA_A_IQ3_XXS)
@@ -1650,7 +1654,6 @@ void init_iq_shmem(uvec3 wgsize)
 #define QUANT_K QUANT_K_IQ3_XXS
 #define QUANT_R QUANT_R_IQ3_XXS
 #define A_TYPE block_iq3_xxs
-#define A_TYPE_PACKED16 block_iq3_xxs_packed16
 #endif
 #endif
 
@@ -1771,34 +1774,16 @@ void init_iq_shmem(uvec3 wgsize)
 
 struct block_iq4_xs
 {
-    float16_t d;
-    uint16_t scales_h;
+    uint8_t d; // E5M3
+    uint8_t scales_h[2];
     uint8_t scales_l[QUANT_K_IQ4_XS/64];
     uint8_t qs[QUANT_K_IQ4_XS/2];
-};
-
-struct block_iq4_xs_packed16
-{
-    float16_t d;
-    uint16_t scales_h;
-    uint16_t scales_l[QUANT_K_IQ4_XS/128];
-    uint16_t qs[QUANT_K_IQ4_XS/4];
-};
-
-struct block_iq4_xs_packed32
-{
-    float16_t d;
-    uint16_t scales_h;
-    uint32_t scales_l;
-    uint32_t qs[QUANT_K_IQ4_XS/8];
 };
 
 #if defined(DATA_A_IQ4_XS)
 #define QUANT_K QUANT_K_IQ4_XS
 #define QUANT_R QUANT_R_IQ4_XS
 #define A_TYPE block_iq4_xs
-#define A_TYPE_PACKED16 block_iq4_xs_packed16
-#define A_TYPE_PACKED32 block_iq4_xs_packed32
 #endif
 
 #define QUANT_K_IQ4_NL 32

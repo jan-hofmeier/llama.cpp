@@ -184,12 +184,12 @@ block_a_prefetch block_a_load(uint ib, uint loadr) {
     block_a_prefetch blk;
     const uint ib_k = ib / 8;
     const uint ib32 = ib % 8;
-    blk.qs = data_a_packed32[ib_k].qs[4 * ib32 + loadr];
+    blk.qs = QS_U32(data_a[ib_k], 4 * (4 * ib32 + loadr));
     blk.d = 0.0;
     if (loadr == 0) {
-        const uint sl = (data_a_packed32[ib_k].scales_l >> (4 * ib32)) & 0xF;
-        const uint sh = (data_a_packed32[ib_k].scales_h >> (2 * ib32)) & 3;
-        blk.d = float(data_a_packed32[ib_k].d) * float(int(sl | (sh << 4)) - 32);
+        const uint sl = (uint(data_a[ib_k].scales_l[ib32 / 2]) >> (4 * (ib32 & 1))) & 0xF;
+        const uint sh = (IQ4_XS_SCALES_H(data_a[ib_k]) >> (2 * ib32)) & 3;
+        blk.d = e5m3_to_fp32(uint(data_a[ib_k].d)) * float(int(sl | (sh << 4)) - 32);
     }
     return blk;
 }

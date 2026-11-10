@@ -217,12 +217,9 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
     const uint iqs = idx % 64;
     const uint is = QUANT_K_IQ3_XXS / 4 + 4 * (iqs / 8);
 
-    const float d = float(data_a[ib].d);
+    const float d = e5m3_to_fp32(uint(data_a[ib].d));
     const uint qs = data_a[ib].qs[iqs];
-    const uint signs = pack32(u16vec2(
-        data_a_packed16[ib].qs[is/2],
-        data_a_packed16[ib].qs[is/2+1]
-    ));
+    const uint signs = QS_U32(data_a[ib], is);
     const float db = d * 0.5 * (0.5 + (signs >> 28));
     const uint32_t sign7 = bitfieldExtract(signs, 7 * (int(iqs / 2) % 4), 7);
     const uint sign = (sign7 | (bitCount(sign7) << 7)) >> (4 * (idx % 2));
@@ -268,10 +265,10 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
     const uint iq = 4 * ib32 + (idx % 4);
 
     const uint sl = (data_a[ib].scales_l[ib32/2] >> (4 * (ib32 & 1))) & 0xF;
-    const uint sh = ((data_a[ib].scales_h) >> (2 * ib32)) & 3;
-    const float d = float(data_a[ib].d);
+    const uint sh = (IQ4_XS_SCALES_H(data_a[ib]) >> (2 * ib32)) & 3;
+    const float d = e5m3_to_fp32(uint(data_a[ib].d));
     const float dl = d * float(int(sl | (sh << 4)) - 32);
-    const uint vui = uint(data_a_packed32[ib].qs[iq]);
+    const uint vui = QS_U32(data_a[ib], 4 * iq);
 
     const u8vec4 qs0 = unpack8( vui       & 0x0F0F0F0F);
     const u8vec4 qs1 = unpack8((vui >> 4) & 0x0F0F0F0F);

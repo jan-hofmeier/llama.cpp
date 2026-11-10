@@ -16,9 +16,9 @@ void calc_superblock(const uint a_offset, const uint b_offset, const uint ib32, 
 
     uint ibi = a_offset + first_row * num_blocks_per_row + i;
     [[unroll]] for (uint n = 0; n < num_rows; ++n) {
-        const float d = float(data_a[ibi].d);
+        const float d = e5m3_to_fp32(uint(data_a[ibi].d));
         const uint sl = (data_a[ibi].scales_l[ib32/2] >> (4 * (ib32 & 1))) & 0xF;
-        const uint sh = (data_a[ibi].scales_h >> (2 * ib32)) & 3;
+        const uint sh = (IQ4_XS_SCALES_H(data_a[ibi]) >> (2 * ib32)) & 3;
         const float dscale = d * float(int(sl | (sh << 4)) - 32);
 
         FLOAT_TYPE sum[NUM_COLS];
@@ -27,7 +27,7 @@ void calc_superblock(const uint a_offset, const uint b_offset, const uint ib32, 
         }
 
         [[unroll]] for (uint l = 0; l < 4; ++l) {
-            const uint w = data_a_packed32[ibi].qs[4 * ib32 + l];
+            const uint w = QS_U32(data_a[ibi], 4 * (4 * ib32 + l));
             const u8vec4 q0 = unpack8(w & 0x0F0F0F0F);
             const u8vec4 q1 = unpack8((w >> 4) & 0x0F0F0F0F);
 

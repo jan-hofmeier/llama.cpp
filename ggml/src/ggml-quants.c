@@ -19,6 +19,21 @@
 
 #define GROUP_MAX_EPS 1e-15f
 #define GROUP_MAX_EPS_IQ3_XXS 1e-8f
+
+// round up, so that the sub-block scales do not clip
+static inline uint8_t ggml_fp32_to_e5m3(float f) {
+    const uint16_t h = GGML_FP32_TO_FP16(f);
+    GGML_ASSERT(!(h & 0x8000));
+    uint8_t e = GGML_FP16_BITS_TO_E5M3(h);
+    if (GGML_E5M3_TO_FP16_BITS(e) != h && e < 0xf7) {
+        e++;
+    }
+    return e;
+}
+
+static inline float ggml_e5m3_to_fp32(uint8_t e) {
+    return GGML_FP16_TO_FP32(GGML_E5M3_TO_FP16(e));
+}
 #define GROUP_MAX_EPS_IQ2_S 1e-8f
 #define GROUP_MAX_EPS_IQ1_M 1e-7f
 #define GROUP_MAX_EPS_IQ1_S 1e-12f
@@ -2596,7 +2611,7 @@ void dequantize_row_iq3_xxs(const block_iq3_xxs * GGML_RESTRICT x, float * GGML_
 
     for (int i = 0; i < nb; i++) {
 
-        const float d = GGML_FP16_TO_FP32(x[i].d);
+        const float d = ggml_e5m3_to_fp32(x[i].d);
         const uint8_t * qs = x[i].qs;
         const uint8_t * scales_and_signs = qs + QK_K/4;
 
@@ -2764,10 +2779,10 @@ void dequantize_row_iq4_xs(const block_iq4_xs * GGML_RESTRICT x, float * GGML_RE
 
         const uint8_t * qs = x[i].qs;
 
-        const float d = GGML_FP16_TO_FP32(x[i].d);
+        const float d = ggml_e5m3_to_fp32(x[i].d);
 
         for (int ib = 0; ib < QK_K/32; ++ib) {
-            const int ls = ((x[i].scales_l[ib/2] >> 4*(ib%2)) & 0xf) | (((x[i].scales_h >> 2*ib) & 3) << 4);
+            const int ls = ((x[i].scales_l[ib/2] >> 4*(ib%2)) & 0xf) | ((((x[i].scales_h[0] | (x[i].scales_h[1] << 8)) >> 2*ib) & 3) << 4);
             const float dl = d * (ls - 32);
             for (int j = 0; j < 16; ++j) {
                 y[j+ 0] = dl * kvalues_iq4nl[qs[j] & 0xf];
@@ -3970,21 +3985,24 @@ static void quantize_row_iq3_xxs_impl(int grid_size, const float * GGML_RESTRICT
 
     const int64_t nbl = n/QK_K;
 
-    ggml_fp16_t * dh;
+    // iq3_xxs has an E5M3 scale (1 byte), iq3_s has an FP16 scale
+    const bool d_e5m3 = grid_size == 256;
+    uint8_t * dh;
     uint8_t * qs;
     int block_size;
-    if (grid_size == 256) {
+    if (d_e5m3) {
         block_iq3_xxs * y = vy;
         dh = &y->d;
         qs = y->qs;
         block_size = sizeof(block_iq3_xxs);
     } else {
         block_iq3_s * y = vy;
-        dh = &y->d;
+        dh = (uint8_t *)&y->d;
         qs = y->qs;
         block_size = sizeof(block_iq3_s);
     }
-    int quant_size = block_size - sizeof(ggml_fp16_t);
+    const int d_size = d_e5m3 ? sizeof(uint8_t) : sizeof(ggml_fp16_t);
+    int quant_size = block_size - d_size;
 
     float scales[QK_K/32];
     float weight[32];
@@ -4001,7 +4019,7 @@ static void quantize_row_iq3_xxs_impl(int grid_size, const float * GGML_RESTRICT
 
     for (int ibl = 0; ibl < nbl; ++ibl) {
 
-        dh[0] = GGML_FP32_TO_FP16(0.f);
+        memset(dh, 0, d_size);
         memset(q3, 0, 3*QK_K/8+QK_K/32);
 
         float max_scale = 0;
@@ -4144,13 +4162,19 @@ static void quantize_row_iq3_xxs_impl(int grid_size, const float * GGML_RESTRICT
 
         if (!max_scale) {
             memset(qs, 0, quant_size);
-            dh += block_size/sizeof(ggml_fp16_t);
+            dh += block_size;
             qs += block_size;
             continue;
         }
 
         float d = max_scale/31;
-        dh[0] = GGML_FP32_TO_FP16(d * 1.0125f);  // small improvement via this fudge factor
+        if (d_e5m3) {
+            dh[0] = ggml_fp32_to_e5m3(d * 1.0125f);  // small improvement via this fudge factor
+            d = ggml_e5m3_to_fp32(dh[0]) / 1.0125f;
+        } else {
+            const ggml_fp16_t d16 = GGML_FP32_TO_FP16(d * 1.0125f);
+            memcpy(dh, &d16, sizeof(d16));
+        }
         float id = 1/d;
         for (int ib = 0; ib < QK_K/32; ++ib) {
             int l = nearest_int(0.5f*(id*scales[ib]-1));
@@ -4159,7 +4183,7 @@ static void quantize_row_iq3_xxs_impl(int grid_size, const float * GGML_RESTRICT
         }
         memcpy(qs, q3, quant_size);
 
-        dh += block_size/sizeof(ggml_fp16_t);
+        dh += block_size;
         qs += block_size;
 
     }
@@ -4951,7 +4975,7 @@ size_t quantize_iq1_m(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 // ============================ 4-bit non-linear quants
 
 static void quantize_row_iq4_nl_impl(const int super_block_size, const int block_size, const float * GGML_RESTRICT x,
-        ggml_fp16_t * dh, uint8_t * q4, uint16_t * scales_h, uint8_t * scales_l,
+        ggml_fp16_t * dh, uint8_t * dh_e5m3, uint8_t * q4, uint8_t * scales_h, uint8_t * scales_l,
         float * scales, float * weight, uint8_t * L,
         const int8_t * values,
         const float * quant_weights,
@@ -4962,7 +4986,11 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
     sigma2 *= 2.f/super_block_size;
 
     memset(q4, 0, super_block_size/2);
-    dh[0] = GGML_FP32_TO_FP16(0.f);
+    if (dh) {
+        dh[0] = GGML_FP32_TO_FP16(0.f);
+    } else {
+        dh_e5m3[0] = 0;
+    }
 
     float mid[15];
     float fval[16];
@@ -5025,8 +5053,9 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
     if (super_block_size/block_size > 1) {
         int nb = super_block_size/block_size;
         memset(scales_h, 0, ((nb+7)/8)*sizeof(uint16_t));
-        float d = -max_scale/32;
-        dh[0] = GGML_FP32_TO_FP16(d);
+        // E5M3 has no sign bit. l is in [-32, 31], so the divisor depends on the sign of max_scale.
+        dh_e5m3[0] = ggml_fp32_to_e5m3(max_scale < 0 ? -max_scale/32 : max_scale/31);
+        float d = ggml_e5m3_to_fp32(dh_e5m3[0]);
         float id = d ? 1/d : 0.f;
         for (int ib = 0; ib < super_block_size/block_size; ++ib) {
             int l = nearest_int(id*scales[ib]);
@@ -5043,7 +5072,7 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
             uint8_t l_h = l >>  4;
             if (ib%2 == 0) scales_l[ib/2] = l_l;
             else scales_l[ib/2] |= (l_l << 4);
-            scales_h[ib/8] |= (l_h << 2*(ib%8));
+            scales_h[ib/4] |= (l_h << 2*(ib%4));
         }
     } else {
         dh[0] = GGML_FP32_TO_FP16(scales[0]);
@@ -5075,7 +5104,7 @@ size_t quantize_iq4_nl(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst
         block_iq4_nl * iq4 = (block_iq4_nl *)qrow;
         for (int ibl = 0; ibl < nblock; ++ibl) {
             const float * qw = quant_weights ? quant_weights + QK4_NL*ibl : NULL;
-            quantize_row_iq4_nl_impl(QK4_NL, 32, src + QK4_NL*ibl, &iq4[ibl].d, iq4[ibl].qs, &unused_h, unused_l,
+            quantize_row_iq4_nl_impl(QK4_NL, 32, src + QK4_NL*ibl, &iq4[ibl].d, NULL, iq4[ibl].qs, (uint8_t *)&unused_h, unused_l,
                     &scale, weight, L, kvalues_iq4nl, qw, 7);
         }
         src += n_per_row;
@@ -5095,7 +5124,7 @@ void quantize_row_iq4_nl_ref(const float * GGML_RESTRICT x, block_iq4_nl * GGML_
     float scale;
     block_iq4_nl * iq4 = y;
     for (int ibl = 0; ibl < nblock; ++ibl) {
-        quantize_row_iq4_nl_impl(QK4_NL, 32, x + QK4_NL*ibl, &iq4[ibl].d, iq4[ibl].qs, &unused_h, unused_l,
+        quantize_row_iq4_nl_impl(QK4_NL, 32, x + QK4_NL*ibl, &iq4[ibl].d, NULL, iq4[ibl].qs, (uint8_t *)&unused_h, unused_l,
                 &scale, weight, L, kvalues_iq4nl, NULL, -1);
     }
 }
@@ -5111,7 +5140,7 @@ size_t quantize_iq4_xs(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst
         block_iq4_xs * iq4 = (block_iq4_xs *)qrow;
         for (int ibl = 0; ibl < nblock; ++ibl) {
             const float * qw = quant_weights ? quant_weights + QK_K*ibl : NULL;
-            quantize_row_iq4_nl_impl(QK_K, 32, src + QK_K*ibl, &iq4[ibl].d, iq4[ibl].qs, &iq4[ibl].scales_h, iq4[ibl].scales_l,
+            quantize_row_iq4_nl_impl(QK_K, 32, src + QK_K*ibl, NULL, &iq4[ibl].d, iq4[ibl].qs, iq4[ibl].scales_h, iq4[ibl].scales_l,
                     scales, weight, L, kvalues_iq4nl, qw, 7);
         }
         src += n_per_row;
@@ -5364,6 +5393,14 @@ static bool validate_e_e8m0(uint8_t e, size_t i) {
     const type * q = (const type *) (data); \
     for (size_t i = 0; i < (nb); ++i) { \
         if (!validate_fp16(q[i].d, i)) { \
+            return false; \
+        } \
+    }
+
+#define VALIDATE_ROW_DATA_D_E5M3_IMPL(type, data, nb) \
+    const type * q = (const type *) (data); \
+    for (size_t i = 0; i < (nb); ++i) { \
+        if (!validate_fp16(GGML_E5M3_TO_FP16(q[i].d), i)) { \
             return false; \
         } \
     }
@@ -5632,7 +5669,7 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
             } break;
         case GGML_TYPE_IQ3_XXS:
             {
-                VALIDATE_ROW_DATA_D_F16_IMPL(block_iq3_xxs, data, nb);
+                VALIDATE_ROW_DATA_D_E5M3_IMPL(block_iq3_xxs, data, nb);
             } break;
 
         case GGML_TYPE_IQ3_S:
@@ -5641,7 +5678,7 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
             } break;
         case GGML_TYPE_IQ4_XS:
             {
-                VALIDATE_ROW_DATA_D_F16_IMPL(block_iq4_xs, data, nb);
+                VALIDATE_ROW_DATA_D_E5M3_IMPL(block_iq4_xs, data, nb);
             } break;
         case GGML_TYPE_IQ4_NL:
             {

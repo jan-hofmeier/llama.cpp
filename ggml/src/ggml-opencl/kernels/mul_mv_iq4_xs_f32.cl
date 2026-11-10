@@ -15,11 +15,18 @@
 #define QK_K 256
 
 typedef struct {
-    half d;
-    ushort scales_h;
+    uchar d; // E5M3
+    uchar scales_h[2];
     uchar scales_l[QK_K/64];
     uchar qs[QK_K/2];
 } block_iq4_xs;
+
+// E5M3 scale: 5 exponent bits and top 3 mantissa bits of FP16, no sign. Same result as FP16 -> FP32 of (x << 7).
+static inline float e5m3_to_fp32(uchar x) {
+    const uint e = x >> 3;
+    const uint m = x & 7;
+    return e == 0 ? (float)m * (1.0f/131072.0f) : as_float(((e + 112) << 23) | (m << 20));
+}
 
 #undef N_DST
 #undef N_SIMDGROUP
@@ -105,8 +112,8 @@ kernel void kernel_mul_mv_iq4_xs_f32(
         for (int row = 0; row < N_DST && first_row + row < ne01; row++) {
             global block_iq4_xs * xb = (global block_iq4_xs *)(xrow + row*nb01);
 
-            int ls = ((xb->scales_l[it/2] >> (4*(it%2))) & 15) | (((xb->scales_h >> (2*it)) & 3) << 4);
-            float db = (float)xb->d * (float)(ls - 32);
+            int ls = ((xb->scales_l[it/2] >> (4*(it%2))) & 15) | (((((uint)xb->scales_h[0] | ((uint)xb->scales_h[1] << 8)) >> (2*it)) & 3) << 4);
+            float db = e5m3_to_fp32(xb->d) * (float)(ls - 32);
             global uchar * qs = xb->qs + 16*it;
 
             float acc = 0.f;

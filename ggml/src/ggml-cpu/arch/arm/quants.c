@@ -3888,7 +3888,7 @@ void ggml_vec_dot_iq3_xxs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const 
 
     float sumf = 0;
     for (int i = 0; i < nb; ++i) {
-        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        const float d = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)) * y[i].d;
         const uint8_t * GGML_RESTRICT q3 = x[i].qs;
         const uint8_t * GGML_RESTRICT gas = x[i].qs + QK_K/4;
         const int8_t   * GGML_RESTRICT q8 = y[i].qs;
@@ -4283,7 +4283,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
 
         const int8_t  * q8 = y[ibl].qs;
         const uint8_t * q4 = x[ibl].qs;
-        uint16_t h = x[ibl].scales_h;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
 
         int sumi1 = 0, sumi2 = 0;
         for (int ib = 0; ib < QK_K/64; ++ib) {
@@ -4307,7 +4307,7 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
 
         }
 
-        sumf += GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d * (sumi1 + sumi2);
+        sumf += GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d * (sumi1 + sumi2);
     }
 
     *s = sumf;

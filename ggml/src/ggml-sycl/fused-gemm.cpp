@@ -439,8 +439,8 @@ static __dpct_inline__ void fg_stage_a(const block_iq4_xs * __restrict__ xrow, c
     FG_SUPERBLOCK(block_iq4_xs);
     // low nibbles fill the first half of the step, high nibbles the second, so the two halves
     // land at a[0..7] and a[8..15] and no quarter loop is needed
-    const float d = (float) blk->d *
-        ((((blk->scales_l[ib / 2] >> (4 * (ib % 2))) & 0xf) | (((blk->scales_h >> (2 * ib)) & 3) << 4)) - 32);
+    const float d = GGML_E5M3_TO_FP32(blk->d) *
+        ((((blk->scales_l[ib / 2] >> (4 * (ib % 2))) & 0xf) | ((((blk->scales_h[0] | (blk->scales_h[1] << 8)) >> (2 * ib)) & 3) << 4)) - 32);
     const uint8_t * q4 = blk->qs + 16 * ib;
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
@@ -453,9 +453,9 @@ template <typename E>
 static __dpct_inline__ void fg_stage_a(const block_iq3_xxs * __restrict__ xrow, const int kb, typename E::pair * a) {
     FG_SUPERBLOCK(block_iq3_xxs);
     const uint8_t *  q3    = blk->qs + 8 * ib;
-    const uint16_t * gas   = (const uint16_t *) (blk->qs + QK_K / 4) + 2 * ib;
-    const uint32_t   aux32 = gas[0] | (gas[1] << 16);
-    const float      d     = (float) blk->d * (0.5f + (aux32 >> 28)) * 0.5f;
+    const uint8_t *  gas   = blk->qs + QK_K / 4 + 4 * ib;
+    const uint32_t   aux32 = gas[0] | (gas[1] << 8) | (gas[2] << 16) | ((uint32_t) gas[3] << 24);
+    const float      d     = GGML_E5M3_TO_FP32(blk->d) * (0.5f + (aux32 >> 28)) * 0.5f;
 #pragma unroll
     for (int il = 0; il < 4; ++il) {
         const uint8_t * grid1 = (const uint8_t *) (iq3xxs_grid + q3[2 * il + 0]);

@@ -8,9 +8,13 @@
 FLOAT_TYPE get_dm(uint ib) {
     return FLOAT_TYPE(data_a[ib / 2].d);
 }
-#elif defined(DATA_A_Q4_0) || defined(DATA_A_Q5_0) || defined(DATA_A_Q8_0) || defined(DATA_A_IQ1_S) || defined(DATA_A_IQ2_XXS) || defined(DATA_A_IQ2_XS) || defined(DATA_A_IQ2_S) || defined(DATA_A_IQ3_XXS) || defined(DATA_A_IQ3_S) || defined(DATA_A_IQ4_XS) || defined(DATA_A_IQ4_NL)
+#elif defined(DATA_A_Q4_0) || defined(DATA_A_Q5_0) || defined(DATA_A_Q8_0) || defined(DATA_A_IQ1_S) || defined(DATA_A_IQ2_XXS) || defined(DATA_A_IQ2_XS) || defined(DATA_A_IQ2_S) || defined(DATA_A_IQ3_S) || defined(DATA_A_IQ4_NL)
 FLOAT_TYPE get_dm(uint ib) {
     return FLOAT_TYPE(data_a[ib].d);
+}
+#elif defined(DATA_A_IQ3_XXS) || defined(DATA_A_IQ4_XS)
+FLOAT_TYPE get_dm(uint ib) {
+    return FLOAT_TYPE(e5m3_to_fp32(uint(data_a[ib].d)));
 }
 #endif
 
@@ -455,16 +459,16 @@ FLOAT_TYPE mmvq_dot_product(const uint ib_a, const uint iqs) {
 
     int32_t q_sum = 0;
     [[unroll]] for (uint j = 0; j < 4; ++j) {
-        const uint32_t vui = data_a_packed32[ib].qs[4 * ib32 + j];
+        const uint32_t vui = QS_U32(data_a[ib], 4 * (4 * ib32 + j));
         const i32vec2 qs_a = iq4nl_to_i8x8(vui);
 
         q_sum += dotPacked4x8EXT(qs_a.x, cache_b_qs[j]);
         q_sum += dotPacked4x8EXT(qs_a.y, cache_b_qs[j + 4]);
     }
 
-    const uint sl = (data_a_packed32[ib].scales_l >> (4 * ib32)) & 0xF;
-    const uint sh = (data_a_packed32[ib].scales_h >> (2 * ib32)) & 3;
-    const float d = float(data_a[ib].d) * float(int(sl | (sh << 4)) - 32);
+    const uint sl = (uint(data_a[ib].scales_l[ib32 / 2]) >> (4 * (ib32 & 1))) & 0xF;
+    const uint sh = (IQ4_XS_SCALES_H(data_a[ib]) >> (2 * ib32)) & 3;
+    const float d = e5m3_to_fp32(uint(data_a[ib].d)) * float(int(sl | (sh << 4)) - 32);
 
     return FLOAT_TYPE(float(cache_b_ds.x) * d * float(q_sum));
 }

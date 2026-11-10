@@ -1107,28 +1107,20 @@ f16vec4 dequantFuncIQ2_S_v(const in decodeBufIQ2_S bl, const in uint blockCoords
 #endif
 
 #if defined(DATA_A_IQ3_XXS)
-layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufIQ3_XXS {
+layout(buffer_reference, std430, buffer_reference_align = 1) buffer decodeBufIQ3_XXS {
    readonly block_iq3_xxs block;
-};
-
-layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufIQ3_XXS_packed16 {
-   readonly block_iq3_xxs_packed16 block;
 };
 
 float16_t dequantFuncIQ3_XXS(const in decodeBufIQ3_XXS bl, const in uint blockCoords[2], const in uint coordInBlock[2])
 {
-    decodeBufIQ3_XXS_packed16 bl16 = decodeBufIQ3_XXS_packed16(bl);
     uint idx = coordInBlock[1];
 
     const uint iqs = (idx & 0xFC) >> 2;             // 0..63
     const uint is = QUANT_K_IQ3_XXS / 4 + ((idx & 0xE0) >> 3);// 8 values
 
-    const float d = float(bl.block.d);
+    const float d = e5m3_to_fp32(uint(bl.block.d));
     const uint qs = bl.block.qs[iqs];
-    const uint signs = pack32(u16vec2(
-        bl16.block.qs[is/2+0],
-        bl16.block.qs[is/2+1]
-    ));
+    const uint signs = QS_U32(bl.block, is);
     const float db = d * 0.5 * (0.5 + (signs >> 28));
     const uint32_t sign7 = bitfieldExtract(signs, 7 * (int(iqs / 2) % 4), 7);
     const uint sign = (sign7 | (bitCount(sign7) << 7)) >> (idx & 0x6);
@@ -1140,15 +1132,14 @@ float16_t dequantFuncIQ3_XXS(const in decodeBufIQ3_XXS bl, const in uint blockCo
 
 f16vec4 dequantFuncIQ3_XXS_v(const in decodeBufIQ3_XXS bl, const in uint blockCoords[2], const in uint coordInBlock[2])
 {
-    decodeBufIQ3_XXS_packed16 bl16 = decodeBufIQ3_XXS_packed16(bl);
     const uint idx = coordInBlock[1];
 
     const uint iqs = idx >> 2;
     const uint is  = QUANT_K_IQ3_XXS / 4 + ((idx & 0xE0) >> 3);
 
-    const float d     = float(bl.block.d);
+    const float d     = e5m3_to_fp32(uint(bl.block.d));
     const uint  qs    = bl.block.qs[iqs];
-    const uint  signs = pack32(u16vec2(bl16.block.qs[is/2+0], bl16.block.qs[is/2+1]));
+    const uint  signs = QS_U32(bl.block, is);
     const float db    = d * 0.5 * (0.5 + (signs >> 28));
 
     const uint sign7 = bitfieldExtract(signs, 7 * (int(iqs / 2) % 4), 7);
@@ -1216,23 +1207,19 @@ f16vec4 dequantFuncIQ3_S_v(const in decodeBufIQ3_S bl, const in uint blockCoords
 #endif
 
 #if defined(DATA_A_IQ4_XS)
-layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufIQ4_XS {
+layout(buffer_reference, std430, buffer_reference_align = 1) buffer decodeBufIQ4_XS {
    readonly block_iq4_xs block;
-};
-
-layout(buffer_reference, std430, buffer_reference_align = 4) buffer decodeBufIQ4_XS_packed32 {
-   readonly block_iq4_xs_packed32 block;
 };
 
 float16_t dequantFuncIQ4_XS(const in decodeBufIQ4_XS bl, const in uint blockCoords[2], const in uint coordInBlock[2])
 {
-    const float16_t d = bl.block.d;
+    const float16_t d = float16_t(e5m3_to_fp32(uint(bl.block.d)));
     const uint idx = coordInBlock[1];
 
     const uint ib32 = (idx & 0xE0) >> 5; // 0..7
 
     const uint sl = (bl.block.scales_l[ib32/2] >> (4 * (ib32 & 1))) & 0xF;
-    const uint sh = ((bl.block.scales_h) >> (2 * ib32)) & 3;
+    const uint sh = (IQ4_XS_SCALES_H(bl.block) >> (2 * ib32)) & 3;
     const uint qshift = (idx & 16) >> 2;
     const uint q = (bl.block.qs[16 * ib32 + (idx % 16)] >> qshift) & 0xF;
 
@@ -1242,19 +1229,18 @@ float16_t dequantFuncIQ4_XS(const in decodeBufIQ4_XS bl, const in uint blockCoor
 
 f16vec4 dequantFuncIQ4_XS_v(const in decodeBufIQ4_XS bl, const in uint blockCoords[2], const in uint coordInBlock[2])
 {
-    decodeBufIQ4_XS_packed32 bl32 = decodeBufIQ4_XS_packed32(bl);
-    const float16_t d = bl.block.d;
+    const float16_t d = float16_t(e5m3_to_fp32(uint(bl.block.d)));
     const uint idx = coordInBlock[1];
 
     const uint ib32   = idx >> 5;                                   // 0..7
-    const uint sl     = (bl32.block.scales_l >> (4 * ib32)) & 0xF;
-    const uint sh     = (uint(bl32.block.scales_h) >> (2 * ib32)) & 0x3;
+    const uint sl     = (uint(bl.block.scales_l[ib32 / 2]) >> (4 * (ib32 & 1))) & 0xF;
+    const uint sh     = (IQ4_XS_SCALES_H(bl.block) >> (2 * ib32)) & 0x3;
     const uint qshift = (idx & 0x10) >> 2;                          // {0, 4}
     const uint qs_w   = 4 * ib32 + ((idx & 0xC) >> 2);              // iqs / 4, in [0,32)
 
     const float16_t dl = d * float16_t(int(sl | (sh << 4)) - 32);
 
-    const uint qsw  = bl32.block.qs[qs_w];
+    const uint qsw  = QS_U32(bl.block, 4 * qs_w);
     const u8vec4 qv = unpack8((qsw >> qshift) & 0x0F0F0F0Fu);
     const vec4 ret = vec4(
         float(kvalues_iq4nl[qv.x]),

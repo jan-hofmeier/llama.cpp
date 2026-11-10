@@ -1112,7 +1112,7 @@ void ggml_vec_dot_iq3_xxs_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs
 
     float sumf = 0.f;
     for (int i = 0; i < nb; ++i) {
-        const float d = GGML_CPU_FP16_TO_FP32(x[i].d) * y[i].d;
+        const float d = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[i].d)) * y[i].d;
         const uint8_t * GGML_RESTRICT q3 = x[i].qs;
         const uint8_t * GGML_RESTRICT gas = x[i].qs + QK_K/4;
         const int8_t  * GGML_RESTRICT q8 = y[i].qs;
@@ -1343,8 +1343,8 @@ void ggml_vec_dot_iq4_xs_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs,
 
     float sumf = 0;
     for (int ibl = 0; ibl < nb; ++ibl) {
-        const float d4d8 = GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d;
-        uint16_t h = x[ibl].scales_h;
+        const float d4d8 = GGML_CPU_FP16_TO_FP32(GGML_E5M3_TO_FP16(x[ibl].d)) * y[ibl].d;
+        uint16_t h = (x[ibl].scales_h[0] | (x[ibl].scales_h[1] << 8));
         const uint8_t * qs = x[ibl].qs;
         const int8_t  * q8 = y[ibl].qs;
         for (int ib = 0; ib < QK_K/32; ib += 2) {

@@ -769,27 +769,27 @@ fn init_shmem_src0(thread_id: u32, batch_offset: u32, offset_m: u32, k_outer: u3
         let src0_idx = batch_offset + global_m * params.stride_01 + block_k;
 
 #if defined(INIT_SRC0_SHMEM_IQ4_XS)
-        let block_byte_base    = src0_idx * 136u; // BLOCK_SIZE_BYTES = 136u;
+        let block_byte_base    = src0_idx * 135u; // BLOCK_SIZE_BYTES = 135u;
         let d_byte_base        = block_byte_base +  0u;
-        let scales_l_byte_base = block_byte_base +  4u;
-        let qs_byte_base       = block_byte_base +  8u;
+        let scales_l_byte_base = block_byte_base +  3u;
+        let qs_byte_base       = block_byte_base +  7u;
 
-        let d_scales_h = load_u32_at_src0_aligned(d_byte_base);
-        let d          = bitcast<vec2<f16>>(d_scales_h).x;
-        let scales_h   = d_scales_h >> 16u;
+        let d_scales_h = load_u32_at_src0(d_byte_base);
+        let d          = f16(unpack2x16float((d_scales_h & 0xFFu) << 7u)[0]); // E5M3 -> FP16 bits
+        let scales_h   = (d_scales_h >> 8u) & 0xFFFFu;
 
         let sub_block = k_in_block / 32u;
         let phase     = (k_in_block / NQ) % 2u;
 
-        let scales_l_u32 = load_u32_at_src0_aligned(scales_l_byte_base);
+        let scales_l_u32 = load_u32_at_src0(scales_l_byte_base);
         let ls_lo        = (get_byte(scales_l_u32, sub_block / 2u) >> (4u * (sub_block % 2u))) & 0xFu;
         let ls_hi        = ((scales_h >> (2u * sub_block)) & 3u) << 4u;
         let dl           = d * f16(i32(ls_lo | ls_hi) - 32);
 
-        let qs_0_3_u32   = load_u32_at_src0_aligned(qs_byte_base + 16u * sub_block +  0u);
-        let qs_4_7_u32   = load_u32_at_src0_aligned(qs_byte_base + 16u * sub_block +  4u);
-        let qs_8_11_u32  = load_u32_at_src0_aligned(qs_byte_base + 16u * sub_block +  8u);
-        let qs_12_15_u32 = load_u32_at_src0_aligned(qs_byte_base + 16u * sub_block + 12u);
+        let qs_0_3_u32   = load_u32_at_src0(qs_byte_base + 16u * sub_block +  0u);
+        let qs_4_7_u32   = load_u32_at_src0(qs_byte_base + 16u * sub_block +  4u);
+        let qs_8_11_u32  = load_u32_at_src0(qs_byte_base + 16u * sub_block +  8u);
+        let qs_12_15_u32 = load_u32_at_src0(qs_byte_base + 16u * sub_block + 12u);
 
         store_shmem_iquants(create_iq_gw4(dl, qs_0_3_u32,   phase), elem_idx +  0u);
         store_shmem_iquants(create_iq_gw4(dl, qs_4_7_u32,   phase), elem_idx +  4u);
@@ -993,11 +993,11 @@ fn init_shmem_src0(thread_id: u32, batch_offset: u32, offset_m: u32, k_outer: u3
 #endif // INIT_SRC0_SHMEM_IQ2_S
 
 #if defined(INIT_SRC0_SHMEM_IQ3_XXS)
-        let block_byte_base = src0_idx * 98u; // BLOCK_SIZE_BYTES = 98u;
+        let block_byte_base = src0_idx * 97u; // BLOCK_SIZE_BYTES = 97u;
         let d_byte_base     = block_byte_base +  0u;
-        let qs_byte_base    = block_byte_base +  2u;
+        let qs_byte_base    = block_byte_base +  1u;
 
-        let d = load_f16_as_f32_at_src0(d_byte_base);
+        let d = unpack2x16float((load_u32_at_src0(d_byte_base) & 0xFFu) << 7u)[0]; // E5M3 -> FP16 bits
 
         let sub_block = k_in_block / 32u;
         let phase     = (k_in_block / NQ) % 2u;

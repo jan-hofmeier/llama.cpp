@@ -5018,7 +5018,7 @@ static bool reorder_qw_iq3_s(uint8_t * data_device, size_t size, dpct::queue_ptr
 static bool reorder_qw_iq3_xxs(uint8_t * data_device, size_t size, dpct::queue_ptr stream) {
     return reorder_qw_planar<block_iq3_xxs>(__func__, data_device, size, offsetof(block_iq3_xxs, qs), 3 * QK_K / 8,
         [](const block_iq3_xxs & x, int64_t ib, uint8_t * tail, int64_t) {
-            reinterpret_cast<ggml_half *>(tail)[ib] = x.d;
+            tail[ib] = x.d;
         }, stream);
 }
 
